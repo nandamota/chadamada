@@ -228,7 +228,7 @@
 
   <div class="local-block">
     <div class="local-label">local</div>
-    <a class="local-link" href="https://www.google.com/maps/place/Recanto+das+Crian%C3%A7as+-+Parque+das+Tr%C3%AAs+Ruas/@-7.1441891,-34.8429198,17z" target="_blank">
+    <a class="local-link" href="https://maps.app.goo.gl/QzuoXSsu5qkp3qjMA" target="_blank">
       <div class="local-value">Recanto das Crianças</div>
     </a>
     <div class="local-sub">Parque das Três Ruas</div>
@@ -311,10 +311,10 @@
   </div>
 </div>
 
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase, ref, set, push, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+  /* ── FIREBASE ── */
   const firebaseConfig = {
     apiKey: "AIzaSyDz8WYrnMCMtm2UFmlD7xuND-RbczX5dRk",
     authDomain: "chadamada-62eab.firebaseapp.com",
@@ -324,37 +324,34 @@
     messagingSenderId: "618244295218",
     appId: "1:618244295218:web:a888215fb0830a6542ca2b"
   };
-
-  const app = initializeApp(firebaseConfig);
-  const db  = getDatabase(app);
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
 
   /* ── TABS ── */
-  window.showTab = function(id, btn) {
+  function showTab(id, btn) {
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById(id).classList.add('active');
     btn.classList.add('active');
-  };
+  }
 
   /* ── ADMIN ── */
-  window.abrirAdmin  = function() { document.getElementById('admin-overlay').classList.add('open'); };
-  window.fecharAdmin = function() { document.getElementById('admin-overlay').classList.remove('open'); };
-  window.fecharAdminFora = function(e) {
-    if (e.target === document.getElementById('admin-overlay')) window.fecharAdmin();
-  };
-
-  window.toggleStatus = function(id, novoStatus) {
-    update(ref(db, `confirmacoes/${id}`), { status: novoStatus });
-  };
+  function abrirAdmin()  { document.getElementById('admin-overlay').classList.add('open'); }
+  function fecharAdmin() { document.getElementById('admin-overlay').classList.remove('open'); }
+  function fecharAdminFora(e) {
+    if (e.target === document.getElementById('admin-overlay')) fecharAdmin();
+  }
+  function toggleStatus(id, novoStatus) {
+    db.ref('confirmacoes/' + id).update({ status: novoStatus });
+  }
 
   /* ── PRESENÇA ── */
-  window.confirmar = function(status) {
+  function confirmar(status) {
     const input = document.getElementById('confirm-name-input');
     const nome  = input.value.trim();
     if (!nome) { input.focus(); return; }
 
-    // Verificar duplicata antes de salvar
-    onValue(ref(db, 'confirmacoes'), snapshot => {
+    db.ref('confirmacoes').once('value', snapshot => {
       const data = snapshot.val() || {};
       const jaExiste = Object.values(data).some(
         c => c.nome.toLowerCase() === nome.toLowerCase()
@@ -365,39 +362,37 @@
         setTimeout(() => input.placeholder = 'seu nome completo…', 2500);
         return;
       }
-      push(ref(db, 'confirmacoes'), { nome, status, ts: Date.now() });
+      db.ref('confirmacoes').push({ nome, status, ts: Date.now() });
       document.getElementById('confirm-form-wrap').style.display = 'none';
       const msg = document.getElementById('thankyou-msg');
       msg.style.display = 'block';
       msg.textContent = status === 'sim'
-        ? `Que alegria, ${nome}! Te esperamos 🌸`
-        : `Obrigada por avisar, ${nome}. Sentiremos sua falta 🤍`;
-    }, { onlyOnce: true });
-  };
+        ? 'Que alegria, ' + nome + '! Te esperamos 🌸'
+        : 'Obrigada por avisar, ' + nome + '. Sentiremos sua falta 🤍';
+    });
+  }
 
-  /* ── LISTENER PRESENÇAS (tempo real) ── */
-  onValue(ref(db, 'confirmacoes'), snapshot => {
+  /* ── LISTENER PRESENÇAS ── */
+  db.ref('confirmacoes').on('value', snapshot => {
     const data = snapshot.val() || {};
-    const confirmacoes = Object.entries(data).map(([id, v]) => ({ id, ...v }));
+    const lista = Object.entries(data).map(([id, v]) => ({ id, ...v }));
 
-    const sim   = confirmacoes.filter(c => c.status === 'sim').length;
-    const nao   = confirmacoes.filter(c => c.status === 'nao').length;
-    document.getElementById('adm-sim').textContent   = sim;
-    document.getElementById('adm-nao').textContent   = nao;
-    document.getElementById('adm-total').textContent = confirmacoes.length;
+    document.getElementById('adm-sim').textContent   = lista.filter(c => c.status === 'sim').length;
+    document.getElementById('adm-nao').textContent   = lista.filter(c => c.status === 'nao').length;
+    document.getElementById('adm-total').textContent = lista.length;
 
     const listP = document.getElementById('adm-list-presenca');
-    if (confirmacoes.length === 0) {
+    if (lista.length === 0) {
       listP.innerHTML = '<div class="empty-state">nenhuma confirmação ainda</div>';
     } else {
-      listP.innerHTML = confirmacoes
+      listP.innerHTML = lista
         .sort((a, b) => a.ts - b.ts)
         .map(c => `
           <div class="admin-item">
             <span class="admin-item-name">${c.nome}</span>
             <div class="status-toggle">
-              <button class="toggle-btn ${c.status === 'sim' ? 'active-sim' : ''}" onclick="toggleStatus('${c.id}', 'sim')">✓ vem</button>
-              <button class="toggle-btn ${c.status === 'nao' ? 'active-nao' : ''}" onclick="toggleStatus('${c.id}', 'nao')">✗ não vem</button>
+              <button class="toggle-btn ${c.status === 'sim' ? 'active-sim' : ''}" onclick="toggleStatus('${c.id}','sim')">✓ vem</button>
+              <button class="toggle-btn ${c.status === 'nao' ? 'active-nao' : ''}" onclick="toggleStatus('${c.id}','nao')">✗ não vem</button>
             </div>
           </div>`).join('');
     }
@@ -413,111 +408,147 @@
   ];
   const totalQty = sizes.reduce((a, s) => a + s.qty, 0);
   document.getElementById('total-count').textContent  = totalQty;
-  document.getElementById('claimed-info').textContent = `0 de ${totalQty} pacotes reservados`;
+  document.getElementById('claimed-info').textContent = '0 de ' + totalQty + ' pacotes reservados';
 
-  // Mapa local: sizeId -> array de nomes (índice = slot)
-  let names = {};
+  // Estado local: sizeId -> array de nomes
+  const names = {};
   sizes.forEach(s => { names[s.id] = new Array(s.qty).fill(''); });
 
+  // Cria estrutura HTML dos tamanhos (apenas uma vez)
   function buildSizes() {
     const container = document.getElementById('sizes-container');
     sizes.forEach(size => {
       const block = document.createElement('div');
       block.className = 'size-block';
-      block.id = `block-${size.id}`;
-      block.innerHTML = `
-        <div class="size-header">
-          <div class="size-name">${size.label}</div>
-          <div class="size-right">
-            <span class="size-weight">${size.weight}</span>
-            <span class="size-qty" id="qty-${size.id}">0 de ${size.qty} reservados</span>
-          </div>
-        </div>
-        <div class="size-body">
-          <div class="progress-bg"><div class="progress-fill" id="bar-${size.id}" style="width:0%"></div></div>
-          <div class="slots" id="slots-${size.id}"></div>
-        </div>`;
+      block.id = 'block-' + size.id;
+      block.innerHTML =
+        '<div class="size-header">' +
+          '<div class="size-name">' + size.label + '</div>' +
+          '<div class="size-right">' +
+            '<span class="size-weight">' + size.weight + '</span>' +
+            '<span class="size-qty" id="qty-' + size.id + '">0 de ' + size.qty + ' reservados</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="size-body">' +
+          '<div class="progress-bg"><div class="progress-fill" id="bar-' + size.id + '" style="width:0%"></div></div>' +
+          '<div class="slots" id="slots-' + size.id + '"></div>' +
+        '</div>';
       container.appendChild(block);
+      // Criar o primeiro slot vazio
+      adicionarSlot(size.id, 0);
     });
   }
 
-  function renderSlots(sizeId, namesArr) {
-    const size    = sizes.find(s => s.id === sizeId);
-    const slotsEl = document.getElementById(`slots-${sizeId}`);
-    slotsEl.innerHTML = '';
-
-    // Renderizar slots preenchidos + 1 vazio (se ainda houver vaga)
-    const filled = namesArr.filter(n => n && n.trim()).length;
-    const mostrar = Math.min(filled + 1, size.qty);
-
-    for (let idx = 0; idx < mostrar; idx++) {
-      const div = document.createElement('div');
-      div.className = 'slot';
-      div.innerHTML = `<span class="slot-num">${String(idx + 1).padStart(2, '0')}</span>`;
-
-      const input = document.createElement('input');
-      input.className   = 'slot-input';
-      input.type        = 'text';
-      input.placeholder = 'seu nome…';
-      input.maxLength   = 40;
-      input.dataset.size  = sizeId;
-      input.dataset.index = idx;
-      input.value = namesArr[idx] || '';
-      if (input.value.trim()) input.classList.add('filled');
-
-      input.addEventListener('blur', onBlur);
-      div.appendChild(input);
-      slotsEl.appendChild(div);
-    }
-
-    // Atualizar barra e contador
-    const pct = (filled / size.qty) * 100;
-    document.getElementById(`bar-${sizeId}`).style.width = pct + '%';
-    document.getElementById(`qty-${sizeId}`).textContent = `${filled} de ${size.qty} reservados`;
+  // Adiciona um único slot ao final
+  function adicionarSlot(sizeId, idx) {
+    const size = sizes.find(s => s.id === sizeId);
+    if (idx >= size.qty) return;
+    const slotsEl = document.getElementById('slots-' + sizeId);
+    const div = document.createElement('div');
+    div.className = 'slot';
+    div.id = 'slot-' + sizeId + '-' + idx;
+    const num = document.createElement('span');
+    num.className = 'slot-num';
+    num.textContent = String(idx + 1).padStart(2, '0');
+    const input = document.createElement('input');
+    input.className   = 'slot-input';
+    input.type        = 'text';
+    input.placeholder = 'seu nome…';
+    input.maxLength   = 40;
+    input.dataset.size  = sizeId;
+    input.dataset.index = idx;
+    input.addEventListener('blur',  onSlotBlur);
+    input.addEventListener('input', onSlotInput);
+    div.appendChild(num);
+    div.appendChild(input);
+    slotsEl.appendChild(div);
   }
 
-  // Salva no Firebase ao sair do campo (blur)
-  function onBlur(e) {
+  // Ao digitar: só abre próximo slot (sem salvar ainda)
+  function onSlotInput(e) {
+    const sizeId = e.target.dataset.size;
+    const idx    = parseInt(e.target.dataset.index);
+    const size   = sizes.find(s => s.id === sizeId);
+    if (e.target.value.trim() !== '') {
+      const slotsEl   = document.getElementById('slots-' + sizeId);
+      const existing  = slotsEl.querySelectorAll('.slot').length;
+      if (idx + 1 === existing && existing < size.qty) {
+        adicionarSlot(sizeId, existing);
+      }
+    }
+  }
+
+  // Ao sair do campo: salva no Firebase
+  function onSlotBlur(e) {
     const sizeId = e.target.dataset.size;
     const idx    = parseInt(e.target.dataset.index);
     const nome   = e.target.value.trim();
+    if (nome) e.target.classList.add('filled');
+    else      e.target.classList.remove('filled');
 
-    if (e.target.value.trim()) e.target.classList.add('filled');
-    else e.target.classList.remove('filled');
-
-    // Salva só se mudou
-    if (names[sizeId][idx] !== nome) {
-      names[sizeId][idx] = nome;
-      set(ref(db, `fraldas/${sizeId}/${idx}`), nome || null);
-    }
+    if (names[sizeId][idx] === nome) return; // não mudou
+    names[sizeId][idx] = nome;
+    db.ref('fraldas/' + sizeId + '/' + idx).set(nome || null);
   }
 
-  function updateTotals() {
+  // Atualiza barra + contadores sem mexer nos inputs
+  function atualizarUI(sizeId) {
+    const size   = sizes.find(s => s.id === sizeId);
+    const filled = names[sizeId].filter(n => n && n.trim()).length;
+    const pct    = (filled / size.qty) * 100;
+    document.getElementById('bar-' + sizeId).style.width = pct + '%';
+    document.getElementById('qty-' + sizeId).textContent  = filled + ' de ' + size.qty + ' reservados';
+    // Total geral
     let claimed = 0;
-    sizes.forEach(s => {
-      claimed += names[s.id].filter(n => n && n.trim()).length;
-    });
-    document.getElementById('claimed-info').textContent = `${claimed} de ${totalQty} pacotes reservados`;
+    sizes.forEach(s => { claimed += names[s.id].filter(n => n && n.trim()).length; });
+    document.getElementById('claimed-info').textContent = claimed + ' de ' + totalQty + ' pacotes reservados';
   }
 
   /* ── LISTENER FRALDAS (tempo real) ── */
-  onValue(ref(db, 'fraldas'), snapshot => {
+  db.ref('fraldas').on('value', snapshot => {
     const data = snapshot.val() || {};
 
     sizes.forEach(size => {
       const arr = new Array(size.qty).fill('');
       if (data[size.id]) {
-        Object.entries(data[size.id]).forEach(([idx, nome]) => {
-          if (parseInt(idx) < size.qty) arr[parseInt(idx)] = nome || '';
+        Object.entries(data[size.id]).forEach(([i, nome]) => {
+          if (parseInt(i) < size.qty) arr[parseInt(i)] = nome || '';
         });
       }
       names[size.id] = arr;
-      renderSlots(size.id, arr);
+
+      // Atualizar inputs existentes sem destruí-los
+      const slotsEl = document.getElementById('slots-' + size.id);
+      arr.forEach((nome, idx) => {
+        const existing = slotsEl.querySelector('[data-index="' + idx + '"]');
+        if (existing) {
+          // Só atualiza se o input não está com foco (não interrompe digitação)
+          if (document.activeElement !== existing) {
+            existing.value = nome;
+            if (nome) existing.classList.add('filled');
+            else      existing.classList.remove('filled');
+          }
+        } else if (nome) {
+          // Slot novo com nome já preenchido por outro usuário
+          adicionarSlot(size.id, idx);
+          setTimeout(() => {
+            const el = slotsEl.querySelector('[data-index="' + idx + '"]');
+            if (el) { el.value = nome; el.classList.add('filled'); }
+          }, 50);
+        }
+      });
+
+      // Garantir que há sempre 1 slot vazio disponível
+      const filled = arr.filter(n => n && n.trim()).length;
+      const existentes = slotsEl.querySelectorAll('.slot').length;
+      if (existentes <= filled && filled < size.qty) {
+        adicionarSlot(size.id, filled);
+      }
+
+      atualizarUI(size.id);
     });
 
-    updateTotals();
-
-    // Atualizar painel admin - fraldas
+    // Atualizar admin - fraldas
     const reservas = [];
     sizes.forEach(s => names[s.id].forEach(nome => {
       if (nome && nome.trim()) reservas.push({ nome, size: s.label });
@@ -525,11 +556,12 @@
     const listF = document.getElementById('adm-list-fraldas');
     listF.innerHTML = reservas.length === 0
       ? '<div class="empty-state">nenhuma reserva ainda</div>'
-      : reservas.map(r => `<div class="admin-fralda-item"><span>${r.nome}</span><span class="admin-fralda-size">${r.size}</span></div>`).join('');
+      : reservas.map(r =>
+          '<div class="admin-fralda-item"><span>' + r.nome + '</span><span class="admin-fralda-size">' + r.size + '</span></div>'
+        ).join('');
   });
 
   buildSizes();
 </script>
-
 </body>
 </html>
