@@ -327,6 +327,15 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
+  // Teste de conexão - detecta problemas de regras/rede imediatamente
+  db.ref('.info/connected').on('value', function(snap) {
+    if (snap.val() === true) {
+      console.log('✅ Firebase conectado');
+    } else {
+      console.warn('⚠️ Firebase desconectado ou aguardando...');
+    }
+  });
+
   /* ── TABS ── */
   function showTab(id, btn) {
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
@@ -346,55 +355,66 @@
   }
 
   /* ── PRESENÇA ── */
+  // Cache local das confirmações (alimentado pelo listener em tempo real)
+  let cacheConfirmacoes = {};
+
   function confirmar(status) {
     const input = document.getElementById('confirm-name-input');
     const nome  = input.value.trim();
     if (!nome) { input.focus(); return; }
 
-    db.ref('confirmacoes').once('value', snapshot => {
-      const data = snapshot.val() || {};
-      const jaExiste = Object.values(data).some(
-        c => c.nome.toLowerCase() === nome.toLowerCase()
-      );
-      if (jaExiste) {
-        input.value = '';
-        input.placeholder = 'nome já confirmado…';
-        setTimeout(() => input.placeholder = 'seu nome completo…', 2500);
-        return;
-      }
-      db.ref('confirmacoes').push({ nome, status, ts: Date.now() });
-      document.getElementById('confirm-form-wrap').style.display = 'none';
-      const msg = document.getElementById('thankyou-msg');
-      msg.style.display = 'block';
-      msg.textContent = status === 'sim'
-        ? 'Que alegria, ' + nome + '! Te esperamos 🌸'
-        : 'Obrigada por avisar, ' + nome + '. Sentiremos sua falta 🤍';
-    });
+    // Verificar duplicata usando cache local (já carregado pelo listener)
+    const jaExiste = Object.values(cacheConfirmacoes).some(
+      c => c.nome && c.nome.toLowerCase() === nome.toLowerCase()
+    );
+    if (jaExiste) {
+      input.value = '';
+      input.placeholder = 'nome já confirmado…';
+      setTimeout(() => input.placeholder = 'seu nome completo…', 2500);
+      return;
+    }
+
+    // Salvar no Firebase
+    db.ref('confirmacoes').push({ nome: nome, status: status, ts: Date.now() })
+      .then(function() {
+        document.getElementById('confirm-form-wrap').style.display = 'none';
+        const msg = document.getElementById('thankyou-msg');
+        msg.style.display = 'block';
+        msg.textContent = status === 'sim'
+          ? 'Que alegria, ' + nome + '! Te esperamos 🌸'
+          : 'Obrigada por avisar, ' + nome + '. Sentiremos sua falta 🤍';
+      })
+      .catch(function(err) {
+        alert('Erro ao salvar. Verifique sua conexão e tente novamente.\n' + err.message);
+      });
   }
 
   /* ── LISTENER PRESENÇAS ── */
-  db.ref('confirmacoes').on('value', snapshot => {
-    const data = snapshot.val() || {};
-    const lista = Object.entries(data).map(([id, v]) => ({ id, ...v }));
+  db.ref('confirmacoes').on('value', function(snapshot) {
+    cacheConfirmacoes = snapshot.val() || {};
+    const lista = Object.entries(cacheConfirmacoes).map(function(entry) {
+      return Object.assign({ id: entry[0] }, entry[1]);
+    });
 
-    document.getElementById('adm-sim').textContent   = lista.filter(c => c.status === 'sim').length;
-    document.getElementById('adm-nao').textContent   = lista.filter(c => c.status === 'nao').length;
+    document.getElementById('adm-sim').textContent   = lista.filter(function(c){ return c.status === 'sim'; }).length;
+    document.getElementById('adm-nao').textContent   = lista.filter(function(c){ return c.status === 'nao'; }).length;
     document.getElementById('adm-total').textContent = lista.length;
 
-    const listP = document.getElementById('adm-list-presenca');
+    var listP = document.getElementById('adm-list-presenca');
     if (lista.length === 0) {
       listP.innerHTML = '<div class="empty-state">nenhuma confirmação ainda</div>';
     } else {
       listP.innerHTML = lista
-        .sort((a, b) => a.ts - b.ts)
-        .map(c => `
-          <div class="admin-item">
-            <span class="admin-item-name">${c.nome}</span>
-            <div class="status-toggle">
-              <button class="toggle-btn ${c.status === 'sim' ? 'active-sim' : ''}" onclick="toggleStatus('${c.id}','sim')">✓ vem</button>
-              <button class="toggle-btn ${c.status === 'nao' ? 'active-nao' : ''}" onclick="toggleStatus('${c.id}','nao')">✗ não vem</button>
-            </div>
-          </div>`).join('');
+        .sort(function(a, b){ return a.ts - b.ts; })
+        .map(function(c){
+          return '<div class="admin-item">' +
+            '<span class="admin-item-name">' + c.nome + '</span>' +
+            '<div class="status-toggle">' +
+              '<button class="toggle-btn ' + (c.status === 'sim' ? 'active-sim' : '') + '" onclick="toggleStatus(\'' + c.id + '\',\'sim\')">✓ vem</button>' +
+              '<button class="toggle-btn ' + (c.status === 'nao' ? 'active-nao' : '') + '" onclick="toggleStatus(\'' + c.id + '\',\'nao\')">✗ não vem</button>' +
+            '</div>' +
+          '</div>';
+        }).join('');
     }
   });
 
